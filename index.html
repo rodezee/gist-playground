@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gist Playground</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/cssalpine">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script defer src="https://unpkg.com/alpine-turnout@1.x.x/dist/turnout.min.js"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="gist-playground.js"></script>
+
+    <style>
+        [x-cloak] { display: none !important; }
+        .split-pane { height: calc(100-vh - 60px); }
+        pre { margin: 0; border-radius: 0; height: 100%; overflow: auto; }
+        iframe { background: white; width: 100%; height: 100%; border: none; }
+        .active-file { background: var(--color-primary); color: white; }
+    </style>
+</head>
+<body class="bg-light">
+
+    <nav class="p-4 border-b bg-white flex justify-between items-center">
+        <a href="/" x-turnout class="h4 text-decoration-none">🚀 Gist Playground</a>
+        <div x-data="{ user: '' }">
+            <input type="text" x-model="user" placeholder="GitHub Username..." class="form-control d-inline w-auto">
+            <button @click="window.location.href = '/?user=' + user" class="btn btn-primary">Go</button>
+        </div>
+    </nav>
+
+    <main id="content" x-turnout-container x-data="gistPlayground" x-cloak>
+        
+        <template x-if="view === 'list'">
+            <div class="container py-5">
+                <h2 x-text="'Gists for ' + username"></h2>
+                <div class="grid">
+                    <template x-for="gist in gists" :key="gist.id">
+                        <div class="card p-3 mb-3">
+                            <h5 x-text="Object.keys(gist.files)[0]"></h5>
+                            <p class="text-muted small" x-text="gist.description || 'No description'"></p>
+                            <a :href="'/playground?id=' + gist.id" x-turnout class="btn btn-sm btn-outline">Open Playground</a>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </template>
+
+        <template x-if="view === 'playground'">
+            <div class="flex split-pane">
+                <aside class="col-2 border-r p-2 bg-white overflow-auto">
+                    <small class="text-uppercase bold text-muted">Files</small>
+                    <ul class="list-unstyled mt-2">
+                        <template x-for="(file, name) in files" :key="name">
+                            <li @click="selectFile(name)" 
+                                :class="activeFile === name ? 'active-file' : ''"
+                                class="p-2 cursor-pointer rounded" 
+                                x-text="name"></li>
+                        </template>
+                    </ul>
+                </aside>
+
+                <section class="col-5 bg-dark position-relative">
+                    <pre><code :class="'language-' + getExt()" x-text="files[activeFile]?.content"></code></pre>
+                </section>
+
+                <section class="col-5 border-l">
+                    <iframe x-ref="outputFrame"></iframe>
+                </section>
+            </div>
+        </template>
+
+        <template x-if="view === 'home'">
+            <div class="container text-center py-5">
+                <h1>Welcome to Gist Playground</h1>
+                <p>Enter a GitHub username above to start exploring public gists.</p>
+            </div>
+        </template>
+
+    </main>
+
+</body>
+</html>
