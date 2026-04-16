@@ -15,71 +15,106 @@
 
     <style>
         [x-cloak] { display: none !important; }
-        .split-pane { height: calc(100vh - 65px); }
-        pre { margin: 0; border-radius: 0; height: 100%; overflow: auto; }
-        iframe { background: white; width: 100%; height: 100%; border: none; }
-        .active-file { background: var(--color-primary); color: white; }
+        
+        /* Force full height shell */
+        html, body { height: 100vh; margin: 0; padding: 0; overflow: scroll; }
+        .app-shell { display: flex; flex-direction: column; height: 100vh; }
+        
+        /* Navbar tweaks */
+        header.top-nav { flex-shrink: 0; border-bottom: 1px solid var(--muted-border-color); padding: 0.5rem 1rem; }
+        header.top-nav nav { margin-bottom: 0; }
+
+        /* The 3-Column View */
+        .playground-view { 
+            display: flex; 
+            flex: 1; 
+            height: calc(100vh - 80px); /* Adjust based on nav height */
+            overflow: hidden; 
+        }
+        
+        .col-sidebar { width: 250px; border-right: 1px solid var(--muted-border-color); overflow-y: auto; flex-shrink: 0; }
+        .col-code { flex: 1; overflow-y: auto; background: #1e1e1e; border-right: 1px solid #000; }
+        .col-preview { flex: 1; background: white; position: relative; }
+
+        /* Content Styles */
+        .file-link { padding: 10px 15px; cursor: pointer; border-bottom: 1px solid var(--muted-border-color); font-size: 14px; }
+        .file-link:hover { background: var(--secondary-hover); }
+        .file-active { background: var(--primary) !important; color: white; font-weight: bold; }
+        
+        iframe { width: 100%; height: 100%; border: none; }
+        pre { margin: 0; padding: 15px; height: 100%; }
+        code { font-family: 'Fira Code', monospace; }
     </style>
 </head>
-<body class="bg-light">
+<body x-data="gistPlayground" x-init="initFromUrl()" class="app-shell">
 
-    <nav class="p-4 border-b bg-white flex justify-between items-center">
-        <a href="/" x-turnout class="h4 text-decoration-none">🚀 Gist Playground</a>
-        <div x-data="{ user: '' }">
-            <input type="text" x-model="user" placeholder="GitHub Username..." class="form-control d-inline w-auto">
-            <button @click="window.location.href = '/?user=' + user" class="btn btn-primary">Go</button>
-        </div>
-    </nav>
+    <header class="top-nav">
+        <nav>
+            <ul>
+                <li @click="view = 'home'; history.pushState({}, '', '/')" style="cursor:pointer">
+                    <strong>🚀 Gist Playground</strong>
+                </li>
+            </ul>
+            <ul>
+                <li><input type="text" x-model="searchUser" placeholder="Username..." @keydown.enter="goToUser()" style="margin-bottom:0"></li>
+                <li><button @click="goToUser()" style="margin-bottom:0">Go</button></li>
+            </ul>
+        </nav>
+    </header>
 
-    <main id="content" x-turnout-container x-data="gistPlayground" x-cloak>
-        
-        <template x-if="view === 'list'">
-            <div class="container py-5">
-                <h2 x-text="'Gists for ' + username"></h2>
+    <main class="flex-1">
+        <template x-if="view === 'home'">
+            <section class="container text-center" style="padding: 5rem 0;">
+                <h1>Gist Explorer</h1>
+                <p>Enter a GitHub username to see their code.</p>
+            </section>
+        </template>
+
+        <template x-if="view === 'user'">
+            <section class="container" style="padding: 2rem 0;">
+                <h2>Gists for <span class="text-primary" x-text="username"></span></h2>
+                <hr>
                 <div class="grid">
                     <template x-for="gist in gists" :key="gist.id">
-                        <div class="card p-3 mb-3">
-                            <h5 x-text="Object.keys(gist.files)[0]"></h5>
-                            <p class="text-muted small" x-text="gist.description || 'No description'"></p>
-                            <a :href="'/playground?id=' + gist.id" x-turnout class="btn btn-sm btn-outline">Open Playground</a>
-                        </div>
+                        <article>
+                            <header>
+                                <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+                                    <template x-for="fileName in Object.keys(gist.files)">
+                                        <kbd style="font-size: 0.7rem;" x-text="fileName"></kbd>
+                                    </template>
+                                </div>
+                            </header>
+                            <p x-text="gist.description || 'No description'"></p>
+                            <footer>
+                                <button @click="openGist(gist.id)" class="outline">Open Playground</button>
+                            </footer>
+                        </article>
                     </template>
                 </div>
-            </div>
+            </section>
         </template>
 
         <template x-if="view === 'playground'">
-            <div class="flex split-pane">
-                <aside class="col-2 border-r p-2 bg-white overflow-auto">
-                    <small class="text-uppercase bold text-muted">Files</small>
-                    <ul class="list-unstyled mt-2">
-                        <template x-for="(file, name) in files" :key="name">
-                            <li @click="selectFile(name)" 
-                                :class="activeFile === name ? 'active-file' : ''"
-                                class="p-2 cursor-pointer rounded" 
-                                x-text="name"></li>
-                        </template>
-                    </ul>
+            <section class="playground-view">
+                <aside class="col-sidebar">
+                    <div style="padding: 10px; font-weight: bold; font-size: 0.7rem; opacity: 0.5;">FILES</div>
+                    <template x-for="(file, name) in files" :key="name">
+                        <div class="file-link" 
+                             :class="activeFile === name ? 'file-active' : ''"
+                             @click="selectFile(name)" 
+                             x-text="name"></div>
+                    </template>
                 </aside>
 
-                <section class="col-5 bg-dark position-relative">
+                <main class="col-code">
                     <pre><code :class="'language-' + getExt()" x-text="files[activeFile]?.content"></code></pre>
-                </section>
+                </main>
 
-                <section class="col-5 border-l">
+                <section class="col-preview">
                     <iframe x-ref="outputFrame"></iframe>
                 </section>
-            </div>
+            </section>
         </template>
-
-        <template x-if="view === 'home'">
-            <div class="container text-center py-5">
-                <h1>Welcome to Gist Playground</h1>
-                <p>Enter a GitHub username above to start exploring public gists.</p>
-            </div>
-        </template>
-
     </main>
-
 </body>
 </html>
