@@ -1,35 +1,85 @@
 document.addEventListener('alpine:init', () => {
     Alpine.data('gistPlayground', () => ({
-        files: {}, // Stores filenames and their raw content
+        // Initialize defaults so Alpine doesn't throw "undefined" errors
+        view: 'home', 
+        username: '',
+        gists: [],
+        files: {},
         activeFile: '',
-        gistId: new URLSearchParams(window.location.search).get('id'),
+        loading: false,
 
         async init() {
-            // 1. Fetch Gist Metadata to get filenames and raw_urls
-            const res = await fetch(`https://api.github.com/gists/${this.gistId}`);
-            const data = await res.json();
-            
-            // 2. Fetch raw content for each file
-            for (let [name, file] of Object.entries(data.files)) {
-                const rawRes = await fetch(file.raw_url);
-                this.files[name] = await rawRes.text();
-                if (!this.activeFile) this.activeFile = name;
+            const params = new URLSearchParams(window.location.search);
+            const user = params.get('user');
+            const id = params.get('id');
+
+            if (id) {
+                this.view = 'playground';
+                await this.loadGist(id);
+            } else if (user) {
+                this.view = 'list';
+                this.username = user;
+                await this.loadUserGists(user);
+            } else {
+                this.view = 'home';
             }
-            
-            this.renderOutput();
+        },
+
+        async loadUserGists(user) {
+            this.loading = true;
+            try {
+                const res = await fetch(`https://api.github.com/users/${user}/gists`);
+                this.gists = await res.json();
+            } catch (e) {
+                console.error("Failed to load user gists", e);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async loadGist(id) {
+            if (!id) return;
+            try {
+                const res = await fetch(`https://api.github.com/gists/${id}`);
+                const data = await res.json();
+                
+                // Format files into a usable object
+                this.files = data.files;
+                this.activeFile = Object.keys(data.files)[0];
+                
+                this.$nextTick(() => {
+                    this.renderOutput();
+                    Prism.highlightAll();
+                });
+            } catch (e) {
+                console.error("Failed to load gist", e);
+            }
+        },
+
+        selectFile(name) {
+            this.activeFile = name;
+            this.$nextTick(() => {
+                Prism.highlightAll();
+                this.renderOutput();
+            });
+        },
+
+        getExt() {
+            return this.activeFile ? this.activeFile.split('.').pop() : 'markup';
         },
 
         renderOutput() {
-            // Combine files into the iframe (assuming HTML/CSS/JS files)
-            const iframe = this.$refs.outputFrame;
-            const html = this.files['index.html'] || this.files[Object.keys(this.files)[0]];
+            if (!this.$refs.outputFrame || !this.activeFile) return;
             
-            const blob = new Blob([html], { type: 'text/html' });
-            iframe.src = URL.createObjectURL(blob);
-        },
+            const file = this.files[this.activeFile];
+            // If it's HTML, render it. If not, maybe wrap it in basic HTML tags
+            let content = file.content;
+            if (this.getExt() !== 'html') {
+                content = `<html><body><pre>${content}</pre></body></html>`;
+            }
 
-        highlight() {
-            this.$nextTick(() => Prism.highlightAll());
+            const blob = new Blob([content], { type: 'text/html' });
+            this.$refs.outputFrame.src = URL.createObjectURL(blob);
         }
-    }))
-})
+    }));
+});
