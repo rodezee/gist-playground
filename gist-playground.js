@@ -9,6 +9,7 @@ document.addEventListener('alpine:init', () => {
 
         init() {
             this.initFromUrl();
+            window.onpopstate = () => this.initFromUrl();
         },
 
         initFromUrl() {
@@ -18,7 +19,6 @@ document.addEventListener('alpine:init', () => {
             } else if (params.has('user')) {
                 this.loadUserGists(params.get('user'));
             }
-            window.onpopstate = () => this.initFromUrl();
         },
 
         updateUrl(params) {
@@ -52,10 +52,9 @@ document.addEventListener('alpine:init', () => {
                 this.files = data.files;
                 this.activeFile = Object.keys(data.files)[0];
 
-                // Wait for Alpine to draw the iframe, then render
                 this.$nextTick(() => {
                     this.highlightCode();
-                    setTimeout(() => this.renderOutput(), 50);
+                    this.renderOutput();
                 });
             } catch (e) { console.error("Gist Load Error:", e); }
         },
@@ -71,7 +70,8 @@ document.addEventListener('alpine:init', () => {
         highlightCode() {
             const codeEl = document.querySelector('main.col-code code');
             if (codeEl) {
-                codeEl.removeAttribute('data-highlighted');
+                // Force Prism to re-highlight
+                delete codeEl.dataset.highlighted; 
                 Prism.highlightElement(codeEl);
             }
         },
@@ -85,39 +85,50 @@ document.addEventListener('alpine:init', () => {
         },
 
         renderOutput() {
-            const frame = this.$refs.outputFrame;
-            if (!frame || !this.activeFile || !this.files[this.activeFile]) return;
+            const container = document.getElementById('preview-container');
+            const ptitle = this.$refs.outputFrameTitle;
+            
+            if (!container || !this.activeFile || !this.files[this.activeFile]) return;
 
             const file = this.files[this.activeFile];
-            let content = file.content;
+            let code = file.content;
 
-            // 1. PREPARE CONTENT
-            if (this.getExt() === 'markup') {
-                // leave it as is
-            } else {
-                content = `<!DOCTYPE html><html><body><pre>${content.replace(/</g, "&lt;")}</pre></body></html>`;
+            // Ensure Standards Mode
+            if (this.getExt() !== 'markup') {
+                code = `<!DOCTYPE html><html><body style="padding:2rem; font-family:monospace;"><pre>${code.replace(/</g, "&lt;")}</pre></body></html>`;
+            } else if (!code.trim().toLowerCase().startsWith('<!doctype')) {
+                code = '<!DOCTYPE html>\n' + code;
             }
 
-            // 2. THE HARD RESET
-            // Re-pointing the src to about:blank kills any running Alpine/Turnout instances
-            // so they don't conflict with the new file.
-            frame.src = "about:blank";
+            // 1. Destroy old iframe (Cleans History API stack)
+            const oldIframe = document.getElementById('display');
+            if (oldIframe) { oldIframe.remove(); }
 
-            // Wait for the 'blank' to register, then write the new content
-            frame.onload = () => {
-                // Remove the listener so it doesn't fire again on our write
-                frame.onload = null;
-                const doc = frame.contentWindow.document;
-                doc.open();
-                doc.write(content);
-                doc.close();
-                frame.contentWindow.addEventListener('click', () => {
-                    if (this.$refs.outputFrameTitle) {
-                        // Update the <small> tag in the header
-                        this.$refs.outputFrameTitle.textContent = (doc.title || "Preview") + " - " + frame.contentWindow.location.pathname;
-                    }
-                });
+            // 2. Create New iframe
+            const newIframe = document.createElement('iframe');
+            newIframe.id = 'display';
+            newIframe.style.width = '100%';
+            newIframe.style.height = '100%';
+            newIframe.style.border = 'none';
+            container.appendChild(newIframe);
+
+            // 3. Sync Write (Standard Playground Procedure)
+            const win = newIframe.contentWindow;
+            const target = win.document;
+            target.open();
+            target.write(code);
+            target.close();
+
+            // 4. Update Preview Header
+            const sync = () => {
+                if (ptitle) {
+                    ptitle.textContent = (target.title || "Preview") + " - " + win.location.pathname;
+                }
             };
+            sync();
+
+            // 5. Reactive Title Change (For Alpine Turnout navigation)
+            win.addEventListener("click", () => setTimeout(sync, 50));
         }
     }));
 });

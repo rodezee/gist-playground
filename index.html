@@ -5,119 +5,211 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gist Playground</title>
     
-    <link rel="stylesheet" href="https://unpkg.com/@picocss/pico">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
-    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    
     <script src="gist-playground.js"></script>
     <script defer src="https://unpkg.com/alpinejs"></script>
 
     <style>
+        :root {
+            --bg-dark: #1e1e1e;
+            --bg-sidebar: #252526;
+            --bg-header: #323233;
+            --border: #454545;
+            --text-main: #cccccc;
+            --accent: #007acc;
+            --accent-hover: #1f8ad2;
+        }
+
         [x-cloak] { display: none !important; }
         
-        html, body { height: 100vh; margin: 0; padding: 0; overflow: hidden; }
-        .app-shell { display: flex; flex-direction: column; height: 100vh; }
-        
-        header.top-nav { flex-shrink: 0; border-bottom: 1px solid var(--muted-border-color); padding: 0.5rem 1rem; }
-        header.top-nav nav { margin-bottom: 0; }
-
-        .playground-view { 
-            display: flex; 
-            flex: 1; 
-            height: calc(100vh - 70px); 
-            overflow: hidden; 
+        * { box-sizing: border-box; }
+        body { 
+            margin: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
-        
-        .col-sidebar { width: 250px; border-right: 1px solid var(--muted-border-color); overflow-y: auto; flex-shrink: 0; }
-        .col-code { flex: 1; overflow-y: auto; background: #1e1e1e; border-right: 1px solid #000; }
-        .col-preview { flex: 1; background: white; position: relative; }
 
-        .file-link { padding: 10px 15px; cursor: pointer; border-bottom: 1px solid var(--muted-border-color); font-size: 14px; }
-        .file-link:hover { background: var(--secondary-hover); }
-        .file-active { background: var(--primary) !important; color: white; font-weight: bold; }
-        
+        /* Top Navigation */
+        .top-nav {
+            background: var(--bg-header);
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 15px;
+            border-bottom: 1px solid var(--border);
+            z-index: 10;
+        }
+
+        .brand { font-weight: bold; cursor: pointer; color: #fff; font-size: 0.9rem; }
+        .preview-meta { font-size: 0.75rem; color: #888; flex: 1; text-align: center; }
+
+        .search-box { display: flex; gap: 5px; }
+        .search-box input {
+            background: #3c3c3c;
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 4px 8px;
+            font-size: 0.8rem;
+            outline: none;
+        }
+        .search-box button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 4px 12px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .search-box button:hover { background: var(--accent-hover); }
+
+        /* Main Workspace */
+        .workspace { display: flex; flex: 1; overflow: hidden; }
+
+        /* Sidebar */
+        .col-sidebar {
+            width: 220px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-label {
+            font-size: 0.7rem;
+            font-weight: bold;
+            padding: 10px;
+            letter-spacing: 1px;
+            color: #666;
+        }
+        .file-link {
+            padding: 6px 15px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: #aaa;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .file-link:hover { background: #2a2d2e; color: #fff; }
+        .file-active { background: #37373d !important; color: #fff !important; border-left: 2px solid var(--accent); }
+
+        /* Code Editor Area */
+        .col-code {
+            flex: 1;
+            background: var(--bg-dark);
+            overflow: auto;
+            border-right: 1px solid var(--border);
+        }
+        pre[class*="language-"] { margin: 0; padding: 15px; height: 100%; border-radius: 0; font-size: 0.9rem; }
+
+        /* Preview Area */
+        .col-preview { flex: 1; background: #fff; display: flex; flex-direction: column; }
+        #preview-container { flex: 1; position: relative; }
         iframe { width: 100%; height: 100%; border: none; }
-        pre { margin: 0; padding: 15px; height: 100%; }
-        code { font-family: 'Fira Code', monospace; }
 
-        /* Smooth transitions for view switching */
-        main { flex: 1; overflow-y: auto; }
+        /* Home/User Views */
+        .full-view {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            overflow-y: auto;
+        }
+        .gist-card {
+            background: var(--bg-sidebar);
+            border: 1px solid var(--border);
+            padding: 20px;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 800px;
+        }
+        .gist-card h3 { margin-top: 0; font-size: 1.1rem; }
+        .tagger {
+            display: inline-block;
+            background: #3c3c3c;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            margin-right: 5px;
+            color: #4ec9b0;
+        }
+        .open-btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
     </style>
 </head>
-<body x-data="gistPlayground" class="app-shell">
+<body x-data="gistPlayground">
 
     <header class="top-nav">
-        <nav>
-            <ul>
-                <li @click="view = 'home'; history.pushState({}, '', '/')" style="cursor:pointer">
-                    <strong>🚀 Gist Playground</strong>
-                </li>
-            </ul>
-            <ul x-show="view === 'playground'" x-cloak>
-                <li>
-                    <small x-ref="outputFrameTitle" style="opacity: 0.7;">Preview</small>
-                </li>
-            </ul>
-            <ul>
-                <li><input type="text" x-model="searchUser" placeholder="Username..." @keydown.enter="goToUser()" style="margin-bottom:0"></li>
-                <li><button @click="goToUser()" style="margin-bottom:0">Go</button></li>
-            </ul>
-        </nav>
+        <div class="brand" @click="view = 'home'; history.pushState({}, '', '/')">🚀 GIST PLAYGROUND</div>
+        
+        <div class="preview-meta" x-show="view === 'playground'" x-cloak>
+            <span x-ref="outputFrameTitle">Preview</span>
+        </div>
+
+        <div class="search-box">
+            <input type="text" x-model="searchUser" placeholder="GitHub Username..." @keydown.enter="goToUser()">
+            <button @click="goToUser()">Load</button>
+        </div>
     </header>
 
-    <main>
-        <div x-show="view === 'home'" x-cloak>
-            <section class="container text-center" style="padding: 5rem 0;">
-                <h1>Gist Explorer</h1>
-                <p>Enter a GitHub username to see their code.</p>
-            </section>
+    <div class="workspace">
+        <div x-show="view === 'home'" class="full-view" x-cloak>
+            <h1>Gist Explorer</h1>
+            <p>Enter a username above to browse and run Gists instantly.</p>
         </div>
 
-        <div x-show="view === 'user'" x-cloak>
-            <section class="container" style="padding: 2rem 0;">
-                <h2>Gists for <span class="text-primary" x-text="username"></span></h2>
-                <hr>
-                <div class="grid">
-                    <template x-for="gist in gists" :key="gist.id">
-                        <article>
-                            <header>
-                                <div style="display: flex; flex-wrap: wrap; gap: 5px;">
-                                    <template x-for="fileName in Object.keys(gist.files)">
-                                        <kbd style="font-size: 0.7rem;" x-text="fileName"></kbd>
-                                    </template>
-                                </div>
-                            </header>
-                            <p x-text="gist.description || 'No description'"></p>
-                            <footer>
-                                <button @click="openGist(gist.id)" class="outline">Open Playground</button>
-                            </footer>
-                        </article>
-                    </template>
-                </div>
-            </section>
+        <div x-show="view === 'user'" class="full-view" x-cloak>
+            <div style="width: 100%; max-width: 800px;">
+                <h2>Gists by <span style="color: var(--accent)" x-text="username"></span></h2>
+                <template x-for="gist in gists" :key="gist.id">
+                    <div class="gist-card">
+                        <div style="margin-bottom: 10px;">
+                            <template x-for="fileName in Object.keys(gist.files)">
+                                <span class="tagger" x-text="fileName"></span>
+                            </template>
+                        </div>
+                        <h3 x-text="gist.description || 'No description'"></h3>
+                        <button class="open-btn" @click="openGist(gist.id)">Open in Playground</button>
+                    </div>
+                </template>
+            </div>
         </div>
 
-        <div x-show="view === 'playground'" x-cloak>
-            <section class="playground-view">
-                <aside class="col-sidebar">
-                    <div style="padding: 10px; font-weight: bold; font-size: 0.7rem; opacity: 0.5;">FILES</div>
-                    <template x-for="(file, name) in files" :key="name">
-                        <div class="file-link" 
-                             :class="activeFile === name ? 'file-active' : ''"
-                             @click="selectFile(name)" 
-                             x-text="name"></div>
-                    </template>
-                </aside>
+        <div x-show="view === 'playground'" class="workspace" style="width: 100%" x-cloak>
+            <aside class="col-sidebar">
+                <div class="sidebar-label">EXPLORER</div>
+                <template x-for="fileName in Object.keys(files)" :key="fileName">
+                    <div class="file-link" 
+                         :class="activeFile === fileName ? 'file-active' : ''"
+                         @click="selectFile(fileName)" 
+                         x-text="fileName"></div>
+                </template>
+            </aside>
 
-                <main class="col-code">
-                    <pre><code :class="'language-' + getExt()" x-text="files[activeFile]?.content"></code></pre>
-                </main>
+            <main class="col-code">
+                <pre><code :class="'language-' + getExt()" x-text="files[activeFile]?.content"></code></pre>
+            </main>
 
-                <section class="col-preview">       
-                    <iframe x-ref="outputFrame"></iframe>
-                </section>
+            <section class="col-preview">
+                <div id="preview-container"></div>
             </section>
         </div>
-    </main>
+    </div>
+
 </body>
 </html>
