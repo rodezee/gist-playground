@@ -1,11 +1,15 @@
 document.addEventListener('alpine:init', () => {
     Alpine.data('gistPlayground', () => ({
-        view: 'home', // 'home', 'user', 'playground'
+        view: 'home',
         searchUser: '',
         username: '',
         gists: [],
         files: {},
         activeFile: '',
+
+        init() {
+            this.initFromUrl();
+        },
 
         initFromUrl() {
             const params = new URLSearchParams(window.location.search);
@@ -14,8 +18,6 @@ document.addEventListener('alpine:init', () => {
             } else if (params.has('user')) {
                 this.loadUserGists(params.get('user'));
             }
-            
-            // Handle browser back/forward buttons
             window.onpopstate = () => this.initFromUrl();
         },
 
@@ -35,15 +37,38 @@ document.addEventListener('alpine:init', () => {
             this.username = user;
             this.view = 'user';
             this.updateUrl(new URLSearchParams({ user }));
-
             try {
                 const res = await fetch(`https://api.github.com/users/${user}/gists`);
                 this.gists = await res.json();
-            } catch (e) { console.error(e); }
+            } catch (e) { console.error("User Load Error:", e); }
         },
 
-        updateUI() {
-            this.renderOutput();
+        async openGist(id) {
+            this.view = 'playground';
+            this.updateUrl(new URLSearchParams({ id }));
+            try {
+                const res = await fetch(`https://api.github.com/gists/${id}`);
+                const data = await res.json();
+                this.files = data.files;
+                this.activeFile = Object.keys(data.files)[0];
+
+                // Wait for Alpine to draw the iframe, then render
+                this.$nextTick(() => {
+                    this.highlightCode();
+                    setTimeout(() => this.renderOutput(), 50);
+                });
+            } catch (e) { console.error("Gist Load Error:", e); }
+        },
+
+        selectFile(name) {
+            this.activeFile = name;
+            this.$nextTick(() => {
+                this.highlightCode();
+                this.renderOutput();
+            });
+        },
+
+        highlightCode() {
             const codeEl = document.querySelector('main.col-code code');
             if (codeEl) {
                 codeEl.removeAttribute('data-highlighted');
@@ -51,81 +76,48 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        selectFile(name) {
-            this.activeFile = name;
-            this.$nextTick(() => this.updateUI());
-        },
-
         getExt() {
             if (!this.activeFile) return 'javascript';
-            const ext = this.activeFile.split('.').pop();
-            const map = { 'js': 'javascript', 'html': 'markup', 'css': 'css' };
+            const parts = this.activeFile.split('.');
+            const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+            const map = { 'js': 'javascript', 'html': 'markup', 'htm': 'markup', 'css': 'css' };
             return map[ext] || 'javascript';
         },
 
-        async openGist(id) {
-            this.view = 'playground';
-            // Update URL without a full page reload
-            const params = new URLSearchParams({ id });
-            const newUrl = window.location.pathname + '?' + params.toString();
-            history.pushState({ id }, '', newUrl);
-
-            try {
-                const res = await fetch(`https://api.github.com/gists/${id}`);
-                const data = await res.json();
-                this.files = data.files;
-                
-                // Pick the first file
-                const firstFile = Object.keys(data.files)[0];
-                this.activeFile = firstFile;
-
-                // Give Alpine time to render the <template x-if>
-                this.$nextTick(() => {
-                    this.updateUI();
-                });
-            } catch (e) { console.error("Gist Load Error:", e); }
-        },
-
         renderOutput() {
-            // 1. Ensure the iframe is actually in the DOM
-            if (!this.$refs.outputFrame) {
-                // If not ready, retry in a moment
-                setTimeout(() => this.renderOutput(), 50);
-                return;
-            }
+            const frame = this.$refs.outputFrame;
+            if (!frame || !this.activeFile || !this.files[this.activeFile]) return;
 
             const file = this.files[this.activeFile];
-            if (!file) return;
-
             let content = file.content;
-            const isHtml = this.getExt() === 'markup' || this.activeFile.endsWith('.html');
 
-            if (isHtml) {
-                // If the Gist uses Alpine Turnout, we want to make sure it 
-                // doesn't think it's at a 404 path immediately.
-                // We inject a script to 'silence' the internal router's 404 logic
-                const initScript = `
-                    <script>
-                        // Prevent the internal Turnout from freaking out about parent URL
-                        window.addEventListener('load', () => {
-                            if (window.Alpine && window.Alpine.store('turnout')) {
-                                // Force the internal router to Home so it doesn't 404
-                                window.Alpine.store('turnout').path = '/';
-                            }
-                        });
-                    </script>
-                `;
-                content = content.replace('<head>', '<head>' + initScript);
+            // 1. PREPARE CONTENT
+            if (this.getExt() === 'markup') {
+                // leave it as is
             } else {
-                content = `<html><body style="font-family:sans-serif;padding:2rem;"><pre>${content.replace(/</g, "&lt;")}</pre></body></html>`;
+                content = `<!DOCTYPE html><html><body><pre>${content.replace(/</g, "&lt;")}</pre></body></html>`;
             }
 
-            // 2. The 'Hard' Reset
-            // Instead of just writing, we wipe the document to kill old Alpine instances
-            const iframeDoc = this.$refs.outputFrame.contentWindow.document;
-            iframeDoc.open();
-            iframeDoc.write(content);
-            iframeDoc.close();
+            // 2. THE HARD RESET
+            // Re-pointing the src to about:blank kills any running Alpine/Turnout instances
+            // so they don't conflict with the new file.
+            frame.src = "about:blank";
+
+            // Wait for the 'blank' to register, then write the new content
+            frame.onload = () => {
+                // Remove the listener so it doesn't fire again on our write
+                frame.onload = null;
+                const doc = frame.contentWindow.document;
+                doc.open();
+                doc.write(content);
+                doc.close();
+                frame.contentWindow.addEventListener('click', () => {
+                    if (this.$refs.outputFrameTitle) {
+                        // Update the <small> tag in the header
+                        this.$refs.outputFrameTitle.textContent = (doc.title || "Preview") + " - " + frame.contentWindow.location.pathname;
+                    }
+                });
+            };
         }
     }));
 });

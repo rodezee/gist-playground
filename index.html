@@ -5,30 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gist Playground</title>
     
-    <link rel="stylesheet" href="https://unpkg.com/cssalpine">
+    <link rel="stylesheet" href="https://unpkg.com/@picocss/pico">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
     <script src="gist-playground.js"></script>
-    <script defer src="https://unpkg.com/alpine-turnout"></script>
     <script defer src="https://unpkg.com/alpinejs"></script>
 
     <style>
         [x-cloak] { display: none !important; }
         
-        /* Force full height shell */
-        html, body { height: 100vh; margin: 0; padding: 0; overflow: scroll; }
+        html, body { height: 100vh; margin: 0; padding: 0; overflow: hidden; }
         .app-shell { display: flex; flex-direction: column; height: 100vh; }
         
-        /* Navbar tweaks */
         header.top-nav { flex-shrink: 0; border-bottom: 1px solid var(--muted-border-color); padding: 0.5rem 1rem; }
         header.top-nav nav { margin-bottom: 0; }
 
-        /* The 3-Column View */
         .playground-view { 
             display: flex; 
             flex: 1; 
-            height: calc(100vh - 80px); /* Adjust based on nav height */
+            height: calc(100vh - 70px); 
             overflow: hidden; 
         }
         
@@ -36,7 +32,6 @@
         .col-code { flex: 1; overflow-y: auto; background: #1e1e1e; border-right: 1px solid #000; }
         .col-preview { flex: 1; background: white; position: relative; }
 
-        /* Content Styles */
         .file-link { padding: 10px 15px; cursor: pointer; border-bottom: 1px solid var(--muted-border-color); font-size: 14px; }
         .file-link:hover { background: var(--secondary-hover); }
         .file-active { background: var(--primary) !important; color: white; font-weight: bold; }
@@ -44,15 +39,23 @@
         iframe { width: 100%; height: 100%; border: none; }
         pre { margin: 0; padding: 15px; height: 100%; }
         code { font-family: 'Fira Code', monospace; }
+
+        /* Smooth transitions for view switching */
+        main { flex: 1; overflow-y: auto; }
     </style>
 </head>
-<body x-data="gistPlayground" x-init="initFromUrl()" class="app-shell">
+<body x-data="gistPlayground" class="app-shell">
 
     <header class="top-nav">
         <nav>
             <ul>
                 <li @click="view = 'home'; history.pushState({}, '', '/')" style="cursor:pointer">
                     <strong>🚀 Gist Playground</strong>
+                </li>
+            </ul>
+            <ul x-show="view === 'playground'" x-cloak>
+                <li>
+                    <small x-ref="outputFrameTitle" style="opacity: 0.7;">Preview</small>
                 </li>
             </ul>
             <ul>
@@ -62,15 +65,15 @@
         </nav>
     </header>
 
-    <main class="flex-1">
-        <template x-if="view === 'home'">
+    <main>
+        <div x-show="view === 'home'" x-cloak>
             <section class="container text-center" style="padding: 5rem 0;">
                 <h1>Gist Explorer</h1>
                 <p>Enter a GitHub username to see their code.</p>
             </section>
-        </template>
+        </div>
 
-        <template x-if="view === 'user'">
+        <div x-show="view === 'user'" x-cloak>
             <section class="container" style="padding: 2rem 0;">
                 <h2>Gists for <span class="text-primary" x-text="username"></span></h2>
                 <hr>
@@ -92,9 +95,9 @@
                     </template>
                 </div>
             </section>
-        </template>
+        </div>
 
-        <template x-if="view === 'playground'">
+        <div x-show="view === 'playground'" x-cloak>
             <section class="playground-view">
                 <aside class="col-sidebar">
                     <div style="padding: 10px; font-weight: bold; font-size: 0.7rem; opacity: 0.5;">FILES</div>
@@ -110,11 +113,11 @@
                     <pre><code :class="'language-' + getExt()" x-text="files[activeFile]?.content"></code></pre>
                 </main>
 
-                <section class="col-preview">
+                <section class="col-preview">       
                     <iframe x-ref="outputFrame"></iframe>
                 </section>
             </section>
-        </template>
+        </div>
     </main>
 </body>
 </html>
