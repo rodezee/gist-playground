@@ -6,10 +6,79 @@ document.addEventListener('alpine:init', () => {
         gists: [],
         files: {},
         activeFile: '',
+        gistId: '',
+        user: null,
+        githubToken: '',
 
         init() {
-            this.initFromUrl();
-            window.onpopstate = () => this.initFromUrl();
+            netlifyIdentity.init();
+
+            // 1. Logic for Login
+            netlifyIdentity.on('login', (user) => {
+                this.user = user;
+                this.githubToken = user.token.access_token;
+                // Automatically load gists for this user
+                this.loadUserGists(user.user_metadata.user_name || user.user_metadata.full_name);
+                netlifyIdentity.close();
+            });
+
+            // 2. Logic for Logout
+            netlifyIdentity.on('logout', () => {
+                this.user = null;
+                this.githubToken = '';
+                this.gists = []; // Clear list
+                this.view = 'home'; // Go back to home
+            });
+
+            // 3. Handle page refresh (if user is already logged in)
+            const currentUser = netlifyIdentity.currentUser();
+            if (currentUser) {
+                this.user = currentUser;
+                this.githubToken = currentUser.token.access_token;
+                this.loadUserGists(currentUser.user_metadata.user_name || currentUser.user_metadata.full_name);
+            }
+        },
+
+        async saveFile() {
+            if (!this.user) {
+                alert("Please log in to save your changes.");
+                return;
+            }
+
+            try {
+                const response = await fetch(`https://api.github.com/gists/${this.gistId}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `token ${this.githubToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        files: { 
+                            [this.activeFile]: { content: this.files[this.activeFile].content } 
+                        }
+                    })
+                });
+
+                if (response.ok) {
+                    alert("Saved to GitHub!");
+                    this.renderOutput();
+                } else {
+                    const data = await response.json();
+                    alert("Error: " + (data.message || "Could not save."));
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Failed to save.");
+            }
+        },
+
+        highlightCode() {
+            // Updated to be safe: it only runs if the element exists
+            const codeEl = document.querySelector('main.col-code code');
+            if (codeEl && typeof Prism !== 'undefined') {
+                delete codeEl.dataset.highlighted; 
+                Prism.highlightElement(codeEl);
+            }
         },
 
         initFromUrl() {
@@ -33,14 +102,23 @@ document.addEventListener('alpine:init', () => {
             }
         },
 
-        async loadUserGists(user) {
-            this.username = user;
+        async loadUserGists(username) {
+            this.username = username;
             this.view = 'user';
-            this.updateUrl(new URLSearchParams({ user }));
+            
+            // Determine the correct endpoint
+            const url = this.user 
+                ? `https://api.github.com/gists` // Authenticated: shows public AND private
+                : `https://api.github.com/users/${username}/gists`; // Public: only public gists
+
             try {
-                const res = await fetch(`https://api.github.com/users/${user}/gists`);
+                const res = await fetch(url, {
+                    headers: this.user ? { 'Authorization': `token ${this.githubToken}` } : {}
+                });
                 this.gists = await res.json();
-            } catch (e) { console.error("User Load Error:", e); }
+            } catch (e) { 
+                console.error("Gist Load Error:", e); 
+            }
         },
 
         async openGist(id) {
@@ -65,15 +143,6 @@ document.addEventListener('alpine:init', () => {
                 this.highlightCode();
                 this.renderOutput();
             });
-        },
-
-        highlightCode() {
-            const codeEl = document.querySelector('main.col-code code');
-            if (codeEl) {
-                // Force Prism to re-highlight
-                delete codeEl.dataset.highlighted; 
-                Prism.highlightElement(codeEl);
-            }
         },
 
         getExt() {
