@@ -13,29 +13,31 @@ document.addEventListener('alpine:init', () => {
         init() {
             netlifyIdentity.init();
 
-            // 1. Logic for Login
+            // Helper to get username safely
+            const getUsername = (user) => {
+                const meta = user?.user_metadata || {};
+                return meta.user_name || meta.full_name || 'User';
+            };
+
             netlifyIdentity.on('login', (user) => {
                 this.user = user;
                 this.githubToken = user.token.access_token;
-                // Automatically load gists for this user
-                this.loadUserGists(user.user_metadata.user_name || user.user_metadata.full_name);
+                this.loadUserGists(getUsername(user));
                 netlifyIdentity.close();
             });
 
-            // 2. Logic for Logout
             netlifyIdentity.on('logout', () => {
                 this.user = null;
                 this.githubToken = '';
-                this.gists = []; // Clear list
-                this.view = 'home'; // Go back to home
+                this.gists = [];
+                this.view = 'home';
             });
 
-            // 3. Handle page refresh (if user is already logged in)
             const currentUser = netlifyIdentity.currentUser();
             if (currentUser) {
                 this.user = currentUser;
                 this.githubToken = currentUser.token.access_token;
-                this.loadUserGists(currentUser.user_metadata.user_name || currentUser.user_metadata.full_name);
+                this.loadUserGists(getUsername(currentUser));
             }
         },
 
