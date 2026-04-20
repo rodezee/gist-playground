@@ -107,20 +107,34 @@ document.addEventListener('alpine:init', () => {
         async loadUserGists(username) {
             this.username = username;
             this.view = 'user';
-            
-            // Determine the correct endpoint
-            const url = this.user 
-                ? `https://api.github.com/gists` // Authenticated: shows public AND private
-                : `https://api.github.com/users/${username}/gists`; // Public: only public gists
+
+            // 1. Determine if we should use Auth
+            const isAuth = !!this.githubToken;
+            const url = isAuth ? `https://api.github.com/gists` : `https://api.github.com/users/${username}/gists`;
+
+            // 2. Use 'Bearer' instead of 'token'
+            const headers = isAuth ? { 'Authorization': `Bearer ${this.githubToken}` } : {};
 
             try {
-                const res = await fetch(url, {
-                    headers: this.user ? { 'Authorization': `token ${this.githubToken}` } : {}
-                });
+                const res = await fetch(url, { headers });
+                
+                if (res.status === 401) {
+                    console.error("Unauthorized! Token might be invalid or expired.");
+                    // Optional: Fallback to public if private fails
+                    this.loadPublicGists(username);
+                    return;
+                }
+
                 this.gists = await res.json();
             } catch (e) { 
                 console.error("Gist Load Error:", e); 
             }
+        },
+
+        // Add this helper to prevent infinite loops
+        async loadPublicGists(username) {
+            const res = await fetch(`https://api.github.com/users/${username}/gists`);
+            this.gists = await res.json();
         },
 
         async openGist(id) {
