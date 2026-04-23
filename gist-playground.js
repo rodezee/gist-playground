@@ -8,9 +8,29 @@ document.addEventListener('alpine:init', () => {
         files: {},
         activeFile: '',
         currentGistId: null,
+        editor: null, // Store Ace instance
 
         init() {
             if (this.searchUser) this.loadUserGists(this.searchUser);
+            
+            // Initialize Ace
+            this.editor = ace.edit("editor");
+            this.editor.setTheme("ace/theme/monokai");
+            this.editor.setOptions({
+                fontSize: "14px",
+                showPrintMargin: false,
+                wrap: true
+            });
+
+            // Listen for changes in Ace and update Alpine data
+            this.editor.on("change", () => {
+                if (this.activeFile && this.files[this.activeFile]) {
+                    this.files[this.activeFile].content = this.editor.getValue();
+                    // Debounce preview update
+                    clearTimeout(this.previewTimer);
+                    this.previewTimer = setTimeout(() => this.updatePreview(), 500);
+                }
+            });
         },
 
         savePat() {
@@ -39,31 +59,36 @@ document.addEventListener('alpine:init', () => {
             this.files = data.files;
             this.activeFile = this.files['index.html'] ? 'index.html' : Object.keys(this.files)[0];
             this.view = 'playground';
-            this.$nextTick(() => this.updatePreview());
+            
+            this.$nextTick(() => {
+                this.selectFile(this.activeFile);
+                this.updatePreview();
+            });
         },
 
         selectFile(name) {
             this.activeFile = name;
+            
+            // Set mode based on file extension
+            const ext = name.split('.').pop();
+            const mode = { 'js': 'javascript', 'html': 'html', 'css': 'css', 'json': 'json', 'md': 'markdown' }[ext] || 'text';
+            this.editor.session.setMode(`ace/mode/${mode}`);
+            
+            // Set content
+            this.editor.setValue(this.files[name].content, -1);
             this.updatePreview();
         },
 
-        /**
-         * THE CLEAN PREVIEW UPDATE
-         * Matches turnout-playground.netlify.app logic
-         */
         updatePreview() {
             const container = document.getElementById('preview-container');
             const ptitle = document.getElementById('preview-title');
             if (!container) return;
 
-            // 1. Get the code (index.html takes priority for the root view)
             const code = this.files['index.html'] ? this.files['index.html'].content : this.files[this.activeFile]?.content;
 
-            // 2. Nuke old iframe
             const oldIframe = document.getElementById('display');
             if (oldIframe) { oldIframe.remove(); }
 
-            // 3. Create fresh iframe
             const newIframe = document.createElement('iframe');
             newIframe.id = 'display';
             newIframe.style.width = '100%';
@@ -71,26 +96,12 @@ document.addEventListener('alpine:init', () => {
             newIframe.style.border = 'none';
             container.appendChild(newIframe);
 
-            // 4. document.write logic
             const target = newIframe.contentWindow.document;
             target.open();
             target.write(code);
             target.close();
 
-            // 5. Update Preview Header (Title & Path)
-            const updateMeta = () => {
-                const docTitle = newIframe.contentWindow.document.title || "Untitled";
-                const path = newIframe.contentWindow.location.pathname;
-                if (ptitle) ptitle.textContent = `${docTitle} - ${path}`;
-            };
-
-            // Initial set
-            updateMeta();
-
-            // Click listener for internal SPA routing changes
-            newIframe.contentWindow.addEventListener("click", () => {
-                setTimeout(updateMeta, 10);
-            });
+            if (ptitle) ptitle.textContent = this.activeFile;
         },
 
         async saveFile() {
