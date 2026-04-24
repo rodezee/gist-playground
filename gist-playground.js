@@ -11,26 +11,26 @@ document.addEventListener('alpine:init', () => {
         editor: null, // Store Ace instance
 
         init() {
-            // 1. Check for URL params
+            // 1. Parse URL params
             const params = new URLSearchParams(window.location.search);
             const user = params.get('user');
             const gistId = params.get('gist');
 
-            // 2. If params exist, load directly
+            // 2. Logic prioritization
             if (user && gistId) {
+                // PRIORITY: If we have a direct link, load the Gist and DO NOT auto-load user list
                 this.searchUser = user;
-                this.username = user; // FIX: Ensure username is set
+                this.username = user;
                 this.openGist(gistId);
             } else if (this.searchUser) {
+                // FALLBACK: If no direct link, load the last known user
                 this.loadUserGists(this.searchUser);
-            }
-            
-            // 3. On PAT grab username via authenticated user
-            if (this.pat) {
+            } else if (this.pat) {
+                // AUTO-LOGIN: Only if we aren't loading a specific Gist, fetch the user via PAT
                 this.getAuthenticatedUser();
             }
             
-            // Initialize Ace
+            // 3. Initialize Ace
             this.editor = ace.edit("editor");
             this.editor.setTheme("ace/theme/monokai");
             this.editor.setOptions({
@@ -39,7 +39,6 @@ document.addEventListener('alpine:init', () => {
                 wrap: true
             });
 
-            // Listen for changes in Ace
             this.editor.on("change", () => {
                 if (this.activeFile && this.files[this.activeFile]) {
                     this.files[this.activeFile].content = this.editor.getValue();
@@ -71,6 +70,13 @@ document.addEventListener('alpine:init', () => {
 
         async openGist(id) {
             this.currentGistId = id;
+            
+            // 1. Ensure we have the username, even if we have to grab it from the URL
+            const params = new URLSearchParams(window.location.search);
+            const urlUser = params.get('user');
+            this.username = urlUser || this.searchUser;
+            
+            // 2. Fetch the data
             const headers = this.pat ? { 'Authorization': `Bearer ${this.pat}` } : {};
             const res = await fetch(`https://api.github.com/gists/${id}`, { headers });
             const data = await res.json();
@@ -79,9 +85,15 @@ document.addEventListener('alpine:init', () => {
             this.activeFile = this.files['index.html'] ? 'index.html' : Object.keys(this.files)[0];
             this.view = 'playground';
 
-            // Update URL without reloading
-            const newUrl = `${window.location.origin}${window.location.pathname}?user=${this.username}&gist=${id}`;
-            window.history.replaceState({ path: newUrl }, '', newUrl);
+            // 3. Construct the URL robustly
+            const newUrl = new URL(window.location.origin + window.location.pathname);
+            newUrl.searchParams.set('user', this.username);
+            newUrl.searchParams.set('gist', id);
+
+            // 4. Update the history
+            window.history.replaceState({}, '', newUrl.toString());
+            
+            console.log("URL successfully updated to:", newUrl.toString());
 
             this.$nextTick(() => {
                 this.selectFile(this.activeFile);
