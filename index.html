@@ -122,6 +122,8 @@
             </div>
             <input type="text" x-model="searchUser" placeholder="Username..." @keyup.enter="loadUserGists(searchUser)">
             <button class="btn" @click="loadUserGists(searchUser)">Load</button>
+            <button class="btn btn-secondary" @click="startNewGist()">New Gist</button>
+            <button x-show="view === 'playground'" class="btn btn-primary" @click="saveFile()">Save</button>
             <button x-show="view === 'playground'" class="btn btn-secondary" @click="copyShareLink()">Share</button>
         </div>
 

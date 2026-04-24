@@ -164,6 +164,13 @@ document.addEventListener('alpine:init', () => {
 
         async saveFile() {
             if (!this.pat) return alert("Token Required");
+
+            if (!this.currentGistId) {
+                // If there is no ID, we are creating a new one
+                return this.createGist();
+            }
+
+            // Otherwise, we update the existing one
             const updatedFiles = {};
             updatedFiles[this.activeFile] = { content: this.files[this.activeFile].content };
 
@@ -175,7 +182,52 @@ document.addEventListener('alpine:init', () => {
                 },
                 body: JSON.stringify({ files: updatedFiles })
             });
+            
             if (res.ok) alert("Saved!");
+            else alert("Save failed. Check your token permissions.");
+        },
+
+        startNewGist() {
+            this.currentGistId = null; // Null indicates this is a new, unsaved Gist
+            this.files = {
+                'index.html': { content: '\n<h1>Hello World</h1>' }
+            };
+            this.activeFile = 'index.html';
+            this.view = 'playground';
+            
+            // Reset editor
+            this.editor.setValue(this.files['index.html'].content, -1);
+            this.updatePreview();
+        },
+
+        async createGist() {
+            if (!this.pat) return alert("Token Required");
+            const description = prompt("Enter a description for your new Gist:", "Created via Gist Playground");
+            
+            const body = {
+                description: description,
+                public: false, // Defaulting to secret Gist for safety
+                files: this.files
+            };
+
+            const res = await fetch(`https://api.github.com/gists`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.pat}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body)
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                this.currentGistId = data.id; // Set ID so future saves are PATCH
+                alert("Created successfully!");
+                // Optional: Update URL to reflect the new Gist ID
+                this.openGist(data.id); 
+            } else {
+                alert("Failed to create Gist.");
+            }
         }
     }));
 });
