@@ -11,7 +11,24 @@ document.addEventListener('alpine:init', () => {
         editor: null, // Store Ace instance
 
         init() {
-            if (this.searchUser) this.loadUserGists(this.searchUser);
+            // 1. Check for URL params
+            const params = new URLSearchParams(window.location.search);
+            const user = params.get('user');
+            const gistId = params.get('gist');
+
+            // 2. If params exist, load directly
+            if (user && gistId) {
+                this.searchUser = user;
+                this.username = user; // FIX: Ensure username is set
+                this.openGist(gistId);
+            } else if (this.searchUser) {
+                this.loadUserGists(this.searchUser);
+            }
+            
+            // 3. On PAT grab username via authenticated user
+            if (this.pat) {
+                this.getAuthenticatedUser();
+            }
             
             // Initialize Ace
             this.editor = ace.edit("editor");
@@ -22,20 +39,65 @@ document.addEventListener('alpine:init', () => {
                 wrap: true
             });
 
-            // Listen for changes in Ace and update Alpine data
+            // Listen for changes in Ace
             this.editor.on("change", () => {
                 if (this.activeFile && this.files[this.activeFile]) {
                     this.files[this.activeFile].content = this.editor.getValue();
-                    // Debounce preview update
                     clearTimeout(this.previewTimer);
                     this.previewTimer = setTimeout(() => this.updatePreview(), 500);
                 }
             });
         },
 
+        async getAuthenticatedUser() {
+            if (!this.pat) return;
+
+            try {
+                const res = await fetch('https://api.github.com/user', {
+                    headers: { 'Authorization': `Bearer ${this.pat}` }
+                });
+
+                if (res.ok) {
+                    const user = await res.json();
+                    this.searchUser = user.login; // Auto-fills the username input
+                    this.loadUserGists(user.login); // Loads the gists automatically
+                } else {
+                    console.error("Failed to fetch user. Check your PAT.");
+                }
+            } catch (error) {
+                console.error("Error fetching user:", error);
+            }
+        },
+
+        async openGist(id) {
+            this.currentGistId = id;
+            const headers = this.pat ? { 'Authorization': `Bearer ${this.pat}` } : {};
+            const res = await fetch(`https://api.github.com/gists/${id}`, { headers });
+            const data = await res.json();
+            
+            this.files = data.files;
+            this.activeFile = this.files['index.html'] ? 'index.html' : Object.keys(this.files)[0];
+            this.view = 'playground';
+
+            // Update URL without reloading
+            const newUrl = `${window.location.origin}${window.location.pathname}?user=${this.username}&gist=${id}`;
+            window.history.replaceState({ path: newUrl }, '', newUrl);
+
+            this.$nextTick(() => {
+                this.selectFile(this.activeFile);
+                this.updatePreview();
+            });
+        },
+        
+        copyShareLink() {
+            navigator.clipboard.writeText(window.location.href);
+            alert("Link copied to clipboard!");
+        },
+
         savePat() {
             localStorage.setItem('github_pat', this.pat);
-            if (this.username) this.loadUserGists(this.username);
+            // This will now fetch the user profile and trigger loadUserGists automatically
+            this.getAuthenticatedUser(); 
         },
 
         async loadUserGists(targetUser) {
@@ -48,22 +110,6 @@ document.addEventListener('alpine:init', () => {
             const res = await fetch(url, { headers });
             const data = await res.json();
             this.gists = Array.isArray(data) ? data : [];
-        },
-
-        async openGist(id) {
-            this.currentGistId = id;
-            const headers = this.pat ? { 'Authorization': `Bearer ${this.pat}` } : {};
-            const res = await fetch(`https://api.github.com/gists/${id}`, { headers });
-            const data = await res.json();
-            
-            this.files = data.files;
-            this.activeFile = this.files['index.html'] ? 'index.html' : Object.keys(this.files)[0];
-            this.view = 'playground';
-            
-            this.$nextTick(() => {
-                this.selectFile(this.activeFile);
-                this.updatePreview();
-            });
         },
 
         selectFile(name) {

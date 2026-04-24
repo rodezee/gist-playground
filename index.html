@@ -114,6 +114,7 @@
 
         <div style="display: flex; gap: 10px; align-items: center;">
             <input type="password" x-model="pat" placeholder="PAT Token..." @change="savePat()" style="width: 120px;">
+            <button x-show="view === 'playground'" class="btn" @click="copyShareLink()">Share</button>
             <button x-show="view === 'playground'" class="btn btn-primary" @click="saveFile()">Save</button>
         </div>
     </header>
