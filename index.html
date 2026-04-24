@@ -109,6 +109,19 @@
             color: #d4d4d4;
             overflow: hidden;
         }
+
+        /* Spinner Styles */
+        .loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); display: flex; align-items: center; 
+            justify-content: center; z-index: 1000; color: white;
+        }
+        .spinner {
+            border: 4px solid #3c3c3c; border-top: 4px solid var(--accent);
+            border-radius: 50%; width: 40px; height: 40px;
+            animation: spin 1s linear infinite; margin-bottom: 10px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body x-data="gistPlayground">
@@ -127,7 +140,7 @@
             <button class="btn" @click="loadUserGists(searchUser)">Load</button>
             <button class="btn btn-third" @click="startNewGist()">New</button>
             <button x-show="view === 'playground'" class="btn btn-primary" @click="saveFile()">Save</button>
-            <button x-show="view === 'playground'" class="btn btn-secondary" @click="copyShareLink()">Share</button>
+            <button x-show="view === 'playground' && isPublic" class="btn btn-secondary" @click="copyShareLink()">Share</button>
         </div>
 
         <div style="display: flex; gap: 10px; align-items: center;">
@@ -159,10 +172,24 @@
 
         <div x-show="view === 'playground'" class="workspace" style="width: 100%" x-cloak>
             <aside class="col-sidebar">
+                <div style="padding: 10px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 0.7rem; font-weight: bold; color: #888;">FILES</span>
+                    <button @click="addFile()" style="cursor: pointer; background: transparent; border: 1px solid var(--accent); color: var(--accent); border-radius: 3px; padding: 0 5px;">+</button>
+                </div>
+
                 <template x-for="fileName in Object.keys(files)" :key="fileName">
-                    <div style="padding: 10px; cursor: pointer; font-size: 0.8rem;" 
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; cursor: pointer; font-size: 0.8rem;" 
                          :style="activeFile === fileName ? 'background: #37373d; border-left: 2px solid var(--accent)' : ''"
-                         @click="selectFile(fileName)" x-text="fileName"></div>
+                         @click="selectFile(fileName)">
+                        
+                        <span x-text="fileName"></span>
+                        
+                        <button @click.stop="deleteFile(fileName)" 
+                                style="background: transparent; border: none; color: #ff6666; cursor: pointer; padding: 0 5px;"
+                                title="Delete file">
+                            &times;
+                        </button>
+                    </div>
                 </template>
             </aside>
 
