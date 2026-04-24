@@ -10,6 +10,7 @@ document.addEventListener('alpine:init', () => {
         currentGistId: null,
         editor: null, // Store Ace instance
         isPublic: false,
+        isLoading: false,
 
         init() {
             // 1. Parse URL params
@@ -54,56 +55,48 @@ document.addEventListener('alpine:init', () => {
 
         async getAuthenticatedUser() {
             if (!this.pat) return;
-
+            this.isLoading = true; // Start
             try {
                 const res = await fetch('https://api.github.com/user', {
                     headers: { 'Authorization': `Bearer ${this.pat}` }
                 });
-
                 if (res.ok) {
                     const user = await res.json();
-                    this.searchUser = user.login; // Auto-fills the username input
-                    this.loadUserGists(user.login); // Loads the gists automatically
-                } else {
-                    console.error("Failed to fetch user. Check your PAT.");
+                    this.searchUser = user.login;
+                    await this.loadUserGists(user.login); // Await this call
                 }
-            } catch (error) {
-                console.error("Error fetching user:", error);
+            } finally {
+                this.isLoading = false; // Stop
             }
         },
 
         async openGist(id) {
-            this.currentGistId = id;
-            
-            // 1. Ensure we have the username, even if we have to grab it from the URL
-            const params = new URLSearchParams(window.location.search);
-            const urlUser = params.get('user');
-            this.username = urlUser || this.searchUser;
-            
-            // 2. Fetch the data
-            const headers = this.pat ? { 'Authorization': `Bearer ${this.pat}` } : {};
-            const res = await fetch(`https://api.github.com/gists/${id}`, { headers });
-            const data = await res.json();
-            
-            this.files = data.files;
-            this.isPublic = data.public;
-            this.activeFile = this.files['index.html'] ? 'index.html' : Object.keys(this.files)[0];
-            this.view = 'playground';
+            this.isLoading = true;
+            try {
+                this.currentGistId = id;
+                const params = new URLSearchParams(window.location.search);
+                this.username = params.get('user') || this.searchUser;
+                const headers = this.pat ? { 'Authorization': `Bearer ${this.pat}` } : {};
+                const res = await fetch(`https://api.github.com/gists/${id}`, { headers });
+                const data = await res.json();
+                
+                this.files = data.files;
+                this.isPublic = data.public;
+                this.activeFile = this.files['index.html'] ? 'index.html' : Object.keys(this.files)[0];
+                this.view = 'playground';
 
-            // 3. Construct the URL robustly
-            const newUrl = new URL(window.location.origin + window.location.pathname);
-            newUrl.searchParams.set('user', this.username);
-            newUrl.searchParams.set('gist', id);
+                const newUrl = new URL(window.location.origin + window.location.pathname);
+                newUrl.searchParams.set('user', this.username);
+                newUrl.searchParams.set('gist', id);
+                window.history.replaceState({}, '', newUrl.toString());
 
-            // 4. Update the history
-            window.history.replaceState({}, '', newUrl.toString());
-            
-            console.log("URL successfully updated to:", newUrl.toString());
-
-            this.$nextTick(() => {
-                this.selectFile(this.activeFile);
-                this.updatePreview();
-            });
+                this.$nextTick(() => {
+                    this.selectFile(this.activeFile);
+                    this.updatePreview();
+                });
+            } finally {
+                this.isLoading = false;
+            }
         },
         
         copyShareLink() {
@@ -118,15 +111,19 @@ document.addEventListener('alpine:init', () => {
         },
 
         async loadUserGists(targetUser) {
-            this.username = targetUser;
-            localStorage.setItem('last_user', targetUser);
-            this.view = 'user';
-            let url = `https://api.github.com/users/${targetUser}/gists`;
-            const headers = this.pat ? { 'Authorization': `Bearer ${this.pat}` } : {};
-
-            const res = await fetch(url, { headers });
-            const data = await res.json();
-            this.gists = Array.isArray(data) ? data : [];
+            this.isLoading = true;
+            try {
+                this.username = targetUser;
+                localStorage.setItem('last_user', targetUser);
+                this.view = 'user';
+                let url = `https://api.github.com/users/${targetUser}/gists`;
+                const headers = this.pat ? { 'Authorization': `Bearer ${this.pat}` } : {};
+                const res = await fetch(url, { headers });
+                const data = await res.json();
+                this.gists = Array.isArray(data) ? data : [];
+            } finally {
+                this.isLoading = false;
+            }
         },
 
         selectFile(name) {
@@ -177,30 +174,21 @@ document.addEventListener('alpine:init', () => {
 
         async saveFile() {
             if (!this.pat) return alert("Token Required");
+            if (!this.currentGistId) return this.createGist();
 
-            if (!this.currentGistId) {
-                return this.createGist();
-            }
-
-            // To support adding files, we should send the new file.
-            // If you want to be safe, send the specific file being saved,
-            // plus ensure the new empty file is included.
-            const updatedFiles = {};
-            updatedFiles[this.activeFile] = { content: this.files[this.activeFile].content };
-
-            const res = await fetch(`https://api.github.com/gists/${this.currentGistId}`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${this.pat}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ files: updatedFiles })
-            });
-            
-            if (res.ok) {
-                alert("Saved!");
-            } else {
-                alert("Save failed. Check your token permissions.");
+            this.isLoading = true;
+            try {
+                const updatedFiles = {};
+                updatedFiles[this.activeFile] = { content: this.files[this.activeFile].content };
+                const res = await fetch(`https://api.github.com/gists/${this.currentGistId}`, {
+                    method: 'PATCH',
+                    headers: { 'Authorization': `Bearer ${this.pat}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ files: updatedFiles })
+                });
+                if (res.ok) alert("Saved!");
+                else alert("Save failed.");
+            } finally {
+                this.isLoading = false;
             }
         },
         
@@ -238,36 +226,26 @@ document.addEventListener('alpine:init', () => {
 
         async createGist() {
             if (!this.pat) return alert("Token Required");
-            
             const description = prompt("Enter a description:", "Created via Gist Playground");
-            // This creates a popup box asking the user to choose
-            const isPublic = confirm("Make this Gist PUBLIC?\n(Click Cancel for Secret/Private)");
+            const isPublic = confirm("Make this Gist PUBLIC?");
             
-            const body = {
-                description: description,
-                public: isPublic, // Dynamically set based on the user's click
-                files: this.files
-            };
-
-            const res = await fetch(`https://api.github.com/gists`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${this.pat}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(body)
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                this.currentGistId = data.id; // Set ID so future saves are PATCH
-                alert("Created successfully!");
-                // Optional: Update URL to reflect the new Gist ID
-                this.openGist(data.id); 
-            } else {
-                alert("Failed to create Gist.");
+            this.isLoading = true;
+            try {
+                const res = await fetch(`https://api.github.com/gists`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${this.pat}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ description, public: isPublic, files: this.files })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    this.currentGistId = data.id;
+                    this.openGist(data.id);
+                }
+            } finally {
+                this.isLoading = false;
             }
         },
+
         async deleteFile(name) {
             if (!confirm(`Are you sure you want to delete ${name}?`)) return;
 
